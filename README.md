@@ -184,6 +184,20 @@ python tools/valid.py \
     --cfg experiments/coco/higher_hrnet/w32_512_adam_lr1e-3.yaml \
     TEST.MODEL_FILE models/pytorch/pose_coco/pose_higher_hrnet_w32_512.pth \
     TEST.FLIP_TEST False
+
+python tools/inference_demo.py \
+    --cfg experiments/coco/higher_hrnet/w32_512_adam_lr1e-3.yaml \
+    --videoFile /home/lh/video/1-6.mp4 \
+    --outputDir ../log/output \
+    TEST.MODEL_FILE /home/lh/pretrain-models/pose_higher_hrnet_w32_512.pth \
+    TEST.FLIP_TEST False
+
+python tools/inference_demo.py \
+    --cfg experiments/coco/higher_hrnet/w32_256_adam_lr1e-3.yaml \
+    --videoFile /home/lh/video/1-6.mp4 \
+    --outputDir ../log/output256 \
+    TEST.MODEL_FILE /home/lh/pretrain-models/pose_higher_hrnet_w32_512.pth \
+    TEST.FLIP_TEST False
 ```
 
 Multi-scale testing is also supported, although we do not report results in our paper:
@@ -264,6 +278,3 @@ If you find this work or code is helpful in your research, please cite:
   year={2019}
 }
 ````
-
-#   p o s e - m u l t i  
- 

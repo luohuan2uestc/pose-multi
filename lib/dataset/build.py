@@ -13,8 +13,8 @@ import torch.utils.data
 
 from .COCODataset import CocoDataset as coco
 from .COCOKeypoints import CocoKeypoints as coco_kpt
-from .CrowdPoseDataset import CrowdPoseDataset as crowd_pose
-from .CrowdPoseKeypoints import CrowdPoseKeypoints as crowd_pose_kpt
+# from .CrowdPoseDataset import CrowdPoseDataset as crowd_pose
+# from .CrowdPoseKeypoints import CrowdPoseKeypoints as crowd_pose_kpt
 from .transforms import build_transforms
 from .target_generators import HeatmapGenerator
 from .target_generators import ScaleAwareHeatmapGenerator
