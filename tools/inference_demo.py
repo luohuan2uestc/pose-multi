@@ -49,7 +49,6 @@ from utils.transforms import get_multi_scale_size
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-CTX = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 COCO_KEYPOINT_INDEXES = {
     0: 'nose',
     1: 'left_eye',
@@ -70,36 +69,6 @@ COCO_KEYPOINT_INDEXES = {
     16: 'right_ankle'
 }
 
-def get_pose_estimation_prediction(pose_model, image, centers, scales, transform):
-    rotation = 0
-
-    # pose estimation transformation
-    model_inputs = []
-    for center, scale in zip(centers, scales):
-        trans = get_affine_transform(center, scale, rotation, cfg.MODEL.IMAGE_SIZE)
-        # Crop smaller image of people
-        model_input = cv2.warpAffine(
-            image,
-            trans,
-            (int(cfg.MODEL.IMAGE_SIZE[0]), int(cfg.MODEL.IMAGE_SIZE[1])),
-            flags=cv2.INTER_LINEAR)
-
-        # hwc -> 1chw
-        model_input = transform(model_input)#.unsqueeze(0)
-        model_inputs.append(model_input)
-
-    # n * 1chw -> nchw
-    model_inputs = torch.stack(model_inputs)
-
-    # compute output heatmap
-    output = pose_model(model_inputs.to(CTX))
-    coords, _ = get_final_preds(
-        cfg,
-        output.cpu().detach().numpy(),
-        np.asarray(centers),
-        np.asarray(scales))
-
-    return coords
 
 def prepare_output_dirs(prefix='/output/'):
     pose_dir = os.path.join(prefix, "pose")
@@ -191,7 +160,12 @@ def main():
             final_output_dir, 'model_best.pth.tar'
         )
         logger.info('=> loading model from {}'.format(model_state_file))
-        model.load_state_dict(torch.load(model_state_file))
+        # model.load_state_dict(torch.load(model_state_file))
+        pretrian_model_state = torch.load(model_state_file)
+        
+        for name, param in model.state_dict().items():
+            
+            model.state_dict()[name].copy_(pretrian_model_state['1.'+name])
 
     model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
     model.eval()

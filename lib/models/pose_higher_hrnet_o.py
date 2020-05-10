@@ -516,7 +516,6 @@ class PoseHigherResolutionNet(nn.Module):
         y = self.final_layers[0](x)
         final_outputs.append(y)
 
-        # without deconvs
         for i in range(self.num_deconvs):
             if self.deconv_config.CAT_OUTPUT[i]:
                 x = torch.cat((x, y), 1)

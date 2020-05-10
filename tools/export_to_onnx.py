@@ -12,7 +12,10 @@ from __future__ import print_function
 import argparse
 import os
 import pprint
+import time
+import shutil
 
+from PIL import Image
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn.parallel
@@ -21,7 +24,10 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms
 import torch.multiprocessing
+import torch.onnx
 from tqdm import tqdm
+import cv2
+import numpy as np
 
 import _init_paths
 import models
@@ -45,6 +51,13 @@ from utils.transforms import get_multi_scale_size
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
+def prepare_output_dirs(prefix='/output/'):
+    pose_dir = os.path.join(prefix, "pose")
+    if os.path.exists(pose_dir) and os.path.isdir(pose_dir):
+        shutil.rmtree(pose_dir)
+    os.makedirs(pose_dir, exist_ok=True)
+    return pose_dir
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Test keypoints network')
     # general
@@ -52,6 +65,12 @@ def parse_args():
                         help='experiment configure file name',
                         required=True,
                         type=str)
+    
+    # parser.add_argument('--videoFile', type=str, required=True)
+    
+    parser.add_argument('--output_onnx', type=str, default='/pose_hrnet.onnx')
+    
+    # parser.add_argument('--inferenceFps', type=int, default=10)
 
     parser.add_argument('opts',
                         help="Modify config options using the command-line",
@@ -88,7 +107,8 @@ def main():
     args = parse_args()
     update_config(cfg, args)
     check_config(cfg)
-
+    # pose_dir = prepare_output_dirs(args.outputDir)
+    
     logger, final_output_dir, tb_log_dir = create_logger(
         cfg, args.cfg, 'valid'
     )
@@ -118,108 +138,34 @@ def main():
         model.load_state_dict(torch.load(cfg.TEST.MODEL_FILE), strict=True)
     else:
         model_state_file = os.path.join(
-            final_output_dir, 'final_state1.pth.tar' #'model_best.pth.tar'
+            final_output_dir, 'model_best.pth.tar'
         )
         logger.info('=> loading model from {}'.format(model_state_file))
-        # model.load_state_dict(torch.load(model_state_file))
         pretrian_model_state = torch.load(model_state_file)
         
         for name, param in model.state_dict().items():
             
             model.state_dict()[name].copy_(pretrian_model_state['1.'+name])
+        # model.load_state_dict(torch.load(model_state_file))
 
-    model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
+    # model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
     model.eval()
+    
+    # Input to the model
+    # batch_size = 1
+    x = torch.randn(1, 3, 256, 256, requires_grad=True)
+    torch_out = model(x)
 
-    data_loader, test_dataset = make_test_dataloader(cfg)
-
-    if cfg.MODEL.NAME == 'pose_hourglass':
-        transforms = torchvision.transforms.Compose(
-            [
-                torchvision.transforms.ToTensor(),
-            ]
-        )
-    else:
-        transforms = torchvision.transforms.Compose(
-            [
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                )
-            ]
-        )
-
-    parser = HeatmapParser(cfg)
-    all_preds = []
-    all_scores = []
-
-    pbar = tqdm(total=len(test_dataset)) if cfg.TEST.LOG_PROGRESS else None
-    for i, (images, annos) in enumerate(data_loader):
-        assert 1 == images.size(0), 'Test batch size should be 1'
-
-        image = images[0].cpu().numpy()
-        # size at scale 1.0
-        base_size, center, scale = get_multi_scale_size(
-            image, cfg.DATASET.INPUT_SIZE, 1.0, min(cfg.TEST.SCALE_FACTOR)
-        )
-
-        with torch.no_grad():
-            final_heatmaps = None
-            tags_list = []
-            for idx, s in enumerate(sorted(cfg.TEST.SCALE_FACTOR, reverse=True)):
-                input_size = cfg.DATASET.INPUT_SIZE
-                image_resized, center, scale = resize_align_multi_scale(
-                    image, input_size, s, min(cfg.TEST.SCALE_FACTOR)
-                )
-                image_resized = transforms(image_resized)
-                image_resized = image_resized.unsqueeze(0).cuda()
-
-                outputs, heatmaps, tags = get_multi_stage_outputs(
-                    cfg, model, image_resized, cfg.TEST.FLIP_TEST,
-                    cfg.TEST.PROJECT2IMAGE, base_size
-                )
-
-                final_heatmaps, tags_list = aggregate_results(
-                    cfg, s, final_heatmaps, tags_list, heatmaps, tags
-                )
-
-            final_heatmaps = final_heatmaps / float(len(cfg.TEST.SCALE_FACTOR))
-            tags = torch.cat(tags_list, dim=4)
-            grouped, scores = parser.parse(
-                final_heatmaps, tags, cfg.TEST.ADJUST, cfg.TEST.REFINE
-            )
-
-            final_results = get_final_preds(
-                grouped, center, scale,
-                [final_heatmaps.size(3), final_heatmaps.size(2)]
-            )
-
-        if cfg.TEST.LOG_PROGRESS:
-            pbar.update()
-
-        if i % cfg.PRINT_FREQ == 0:
-            prefix = '{}_{}'.format(os.path.join(final_output_dir, 'result_valid'), i)
-            # logger.info('=> write {}'.format(prefix))
-            save_valid_image(image, final_results, '{}.jpg'.format(prefix), dataset=test_dataset.name)
-            # save_debug_images(cfg, image_resized, None, None, outputs, prefix)
-
-        all_preds.append(final_results)
-        all_scores.append(scores)
-
-    if cfg.TEST.LOG_PROGRESS:
-        pbar.close()
-
-    name_values, _ = test_dataset.evaluate(
-        cfg, all_preds, all_scores, final_output_dir
-    )
-
-    if isinstance(name_values, list):
-        for name_value in name_values:
-            _print_name_value(logger, name_value, cfg.MODEL.NAME)
-    else:
-        _print_name_value(logger, name_values, cfg.MODEL.NAME)
-
+    # Export the model
+    torch.onnx.export(model,               # model being run
+                    x,                         # model input (or a tuple for multiple inputs)
+                    args.output_onnx,   # where to save the model (can be a file or file-like object)
+                    export_params=True,        # store the trained parameter weights inside the model file
+                    opset_version=11,          # the ONNX version to export the model to
+                    do_constant_folding=True,  # whether to execute constant folding for optimization
+                    input_names = ['input'],   # the model's input names
+                    output_names = ['output1'] # the model's output names
+                    )
 
 if __name__ == '__main__':
     main()

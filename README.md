@@ -173,8 +173,15 @@ For single-scale testing:
 
 ```
 python tools/valid.py \
+    --cfg experiments/coco/higher_hrnet/w18_256_adam_lr1e-3.yaml \
+    TEST.MODEL_FILE models/pytorch/pose_coco/pose_higher_hrnet_w32_512.pth
+
+python tools/valid.py \
     --cfg experiments/coco/higher_hrnet/w32_512_adam_lr1e-3.yaml \
     TEST.MODEL_FILE models/pytorch/pose_coco/pose_higher_hrnet_w32_512.pth
+
+python tools/valid.py \
+    --cfg experiments/coco/higher_hrnet/w9_256_adam_lr1e-3.yaml
 ```
 
 By default, we use horizontal flip. To test without flip:
@@ -198,6 +205,45 @@ python tools/inference_demo.py \
     --outputDir ../log/output256 \
     TEST.MODEL_FILE /home/lh/pretrain-models/pose_higher_hrnet_w32_512.pth \
     TEST.FLIP_TEST False
+
+python tools/inference_demo.py \
+    --cfg experiments/coco/higher_hrnet/w18_256_adam_lr1e-3.yaml \
+    --videoFile /home/lh/video/1-6.mp4 \
+    --outputDir ../log/output256 \
+
+python tools/export_to_onnx.py \
+    --cfg experiments/coco/higher_hrnet/w32_256_adam_lr1e-3.yaml \
+    --output_onnx /home/lh/pretrain-models/pose_higher_hrnet_256.onnx \
+    TEST.MODEL_FILE /home/lh/pretrain-models/pose_higher_hrnet_w32_512.pth
+
+python tools/export_to_onnx.py \
+    --cfg experiments/coco/higher_hrnet/w18_256_adam_lr1e-3.yaml \
+    --output_onnx /home/lh/pretrain-models/pose_higher_hrnet_w18_256.onnx \
+    TEST.MODEL_FILE /home/lh/projects/hrnet-w18-output/coco_kpt/pose_higher_hrnet/w18_256_adam_lr1e-3/model_best.pth.tar
+
+python tools/export_to_onnx.py \
+    --cfg experiments/coco/higher_hrnet/w18_512_lite_adam_lr1e-3.yaml \
+    --output_onnx /home/lh/pretrain-models/pose_higher_hrnet_w18_256.onnx
+
+onnx-tf convert -i /home/lh/pretrain-models/pose_higher_hrnet_256_sim.onnx -o /home/lh/pretrain-models/pose_higher_hrnet_256.pb
+
+onnx-tf convert -i /home/lh/pretrain-models/human-pose-estimation-s.onnx -o /home/lh/pretrain-models/human-pose-estimation-s.pb
+
+
+python -m onnxsim /home/lh/pretrain-models/pose_higher_hrnet_256.onnx /home/lh/pretrain-models/pose_higher_hrnet_256_sim.onnx
+
+python -m onnxsim /home/lh/pretrain-models/pose_higher_hrnet_w18_256.onnx /home/lh/pretrain-models/pose_higher_hrnet_w18_256_sim.onnx
+
+tools/onnx/onnx2ncnn /home/lh/pretrain-models/pose_higher_hrnet_256_sim.onnx /home/lh/pretrain-models/pose_higher_hrnet_256.param /home/lh/pretrain-models/pose_higher_hrnet_256.bin
+
+tools/onnx/onnx2ncnn /home/lh/pretrain-models/pose_higher_hrnet_w18_256_sim.onnx /home/lh/pretrain-models/pose_higher_hrnet_w18_256.param /home/lh/pretrain-models/pose_higher_hrnet_w18_256.bin
+
+tools/onnx/onnx2ncnn /home/lh/pretrain-models/shufflenetv2x2.onnx /home/lh/pretrain-models/shufflenetv2x2.param /home/lh/pretrain-models/shufflenetv2x2.bin
+
+python -m onnxsim /home/lh/projects/lightweight-human-pose-estimation.pytorch/human-pose-estimation.onnx /home/lh/pretrain-models/human-pose-estimation-s.onnx
+
+tools/onnx/onnx2ncnn /home/lh/projects/lightweight-human-pose-estimation.pytorch/human-pose-estimation.onnx /home/lh/pretrain-models/human-pose-estimation.param /home/lh/pretrain-models/human-pose-estimation.bin
+
 ```
 
 Multi-scale testing is also supported, although we do not report results in our paper:
@@ -229,6 +275,18 @@ Due to large input size for bottom-up methods, we use mixed-precision training t
 ```
 python tools/dist_train.py \
     --cfg experiments/coco/higher_hrnet/w32_512_adam_lr1e-3.yaml \
+    FP16.ENABLED True FP16.DYNAMIC_LOSS_SCALE True
+
+python tools/dist_train.py \
+    --cfg experiments/coco/higher_hrnet/w18_256_adam_lr1e-3.yaml \
+    FP16.ENABLED True FP16.DYNAMIC_LOSS_SCALE True
+
+python tools/dist_train.py \
+    --cfg experiments/coco/higher_hrnet/w18_512_adam_lr1e-3.yaml \
+    FP16.ENABLED True FP16.DYNAMIC_LOSS_SCALE True
+
+python tools/dist_train.py \
+    --cfg experiments/coco/higher_hrnet/lite_256_adam_lr1e-3.yaml \
     FP16.ENABLED True FP16.DYNAMIC_LOSS_SCALE True
 ```
 
